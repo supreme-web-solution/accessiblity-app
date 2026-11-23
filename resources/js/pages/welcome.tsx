@@ -7,7 +7,6 @@ import {
     Keyboard,
     Mic,
     Palette,
-    Shield,
     Sparkles,
     Type,
     UserPlus,
@@ -23,6 +22,7 @@ import { dashboard, login } from '@/routes';
 type Props = {
     auth: { user: { name: string } | null };
     currentTeam?: { slug: string } | null;
+    appUrl: string;
 };
 
 const FEATURES: { title: string; text: string; icon: LucideIcon; tone: string }[] = [
@@ -42,7 +42,7 @@ const STEPS: { title: string; text: string; icon: LucideIcon }[] = [
 ];
 
 export default function Welcome() {
-    const { auth, currentTeam } = usePage<Props>().props;
+    const { auth, currentTeam, appUrl } = usePage<Props>().props;
     const dashboardUrl = currentTeam ? dashboard(currentTeam.slug) : '/';
 
     return (
@@ -187,7 +187,7 @@ export default function Welcome() {
                         <pre className="overflow-x-auto p-5 font-mono text-sm leading-6 text-slate-200">
                             <span className="text-sky-300">{'<script'}</span>
                             <span className="text-slate-400">{' src='}</span>
-                            <span className="text-amber-300">{'"https://your-ada-suite.com/widget/your-key.js"'}</span>
+                            <span className="text-amber-300">{`"${appUrl}/widget/your-key.js"`}</span>
                             <span className="text-sky-300">{' defer></script>'}</span>
                         </pre>
                     </div>
@@ -197,11 +197,11 @@ export default function Welcome() {
                     <div className="grid gap-5 md:grid-cols-[1fr_1.4fr]">
                         <div className="rounded-3xl border bg-card p-8">
                             <span className="flex size-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                                <Shield className="size-6" />
+                                <Globe className="size-6" />
                             </span>
-                            <h3 className="mt-5 text-xl font-bold">Honest about what it does</h3>
+                            <h3 className="mt-5 text-xl font-bold">Works on any website</h3>
                             <p className="mt-2 text-sm text-muted-foreground">
-                                ADA Suite helps visitors adjust your site. It does not fix your code, headings, colour contrast or alt text, so test your pages with real users and an accessibility checker.
+                                If your site can load a script tag, it can use ADA Suite. Nothing to install on the visitor's side.
                             </p>
                         </div>
                         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-600 via-primary to-sky-500 p-8 text-white">
