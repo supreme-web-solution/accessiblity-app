@@ -446,7 +446,7 @@
       '.fab{position:absolute;left:0;top:0;width:' + SIZE + 'px;height:' + SIZE + 'px;margin:0;padding:0;border:3px solid #fff;border-radius:50%;background:' + p + ';color:' + t + ';box-shadow:0 8px 22px rgba(0,0,0,.28);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s ease}',
       '.fab:hover{transform:scale(1.06)}',
       'button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid ' + hl + ';outline-offset:2px}',
-      '.panel{position:absolute;width:min(384px,calc(100vw - 32px));max-height:min(76vh,680px);overflow:auto;background:#f7f9fc;color:#1d2330;border-radius:16px;box-shadow:0 18px 48px rgba(10,20,40,.3);box-sizing:border-box;padding-bottom:14px}',
+      '.panel{position:absolute;width:min(384px,calc(100vw - 32px));max-height:min(76vh,680px);overflow:auto;background:rgba(247,249,252,.82);-webkit-backdrop-filter:blur(18px) saturate(1.4);backdrop-filter:blur(18px) saturate(1.4);color:#1d2330;border:1px solid rgba(255,255,255,.7);border-radius:16px;box-shadow:0 18px 48px rgba(10,20,40,.3);box-sizing:border-box;padding-bottom:14px}',
       '.panel[hidden]{display:none}',
       '.pos-r{right:0}.pos-l{left:0}',
       '.pos-t{top:' + (SIZE + 12) + 'px}.pos-b{bottom:' + (SIZE + 12) + 'px}',
@@ -597,6 +597,10 @@
     var panel = sr.getElementById('panel');
 
     // ---------- Positioning (document coordinates) ----------
+    // A visitor can drag the button anywhere; the spot is remembered until they pick a preset position.
+    var dragPos = null;
+    try { dragPos = JSON.parse(win.localStorage.getItem('accessease:pos') || 'null'); } catch (e) { dragPos = null; }
+
     function place() {
       var pos = String(state.position || cfg.position || 'bottom-right');
       var off = Number(cfg.offset) || 20;
@@ -608,9 +612,106 @@
       if (/^top/.test(pos)) { top = sy + off; }
       else if (/^middle/.test(pos)) { top = sy + (vh - SIZE) / 2; }
       else { top = sy + vh - off - SIZE; }
+      if (dragPos && typeof dragPos.left === 'number' && typeof dragPos.top === 'number') {
+        left = Math.max(sx, Math.min(dragPos.left, sx + vw - SIZE));
+        top = Math.max(sy, Math.min(dragPos.top, sy + vh - SIZE));
+      }
       host.style.left = left + 'px';
       host.style.top = top + 'px';
-      panel.className = 'panel ' + (/left/.test(pos) ? 'pos-l' : 'pos-r') + ' ' + (/^top|^middle/.test(pos) ? 'pos-t' : 'pos-b');
+      var onLeft = dragPos ? (left - sx) < vw / 2 : /left/.test(pos);
+      var onTop = dragPos ? (top - sy) < vh / 2 : /^top|^middle/.test(pos);
+      panel.className = 'panel ' + (onLeft ? 'pos-l' : 'pos-r') + ' ' + (onTop ? 'pos-t' : 'pos-b');
+    }
+
+    var drag = null;
+    var justDragged = false;
+
+    function onFabPointerDown(e) {
+      if (e.button !== undefined && e.button !== 0) { return; }
+      drag = { x: e.clientX, y: e.clientY, left: parseFloat(host.style.left) || 0, top: parseFloat(host.style.top) || 0, moved: false };
+    }
+
+    function onFabPointerMove(e) {
+      if (!drag) { return; }
+      var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 6) { return; }
+      drag.moved = true;
+      dragPos = { left: drag.left + dx, top: drag.top + dy };
+      host.style.left = dragPos.left + 'px';
+      host.style.top = dragPos.top + 'px';
+    }
+
+    function onFabPointerUp() {
+      if (!drag) { return; }
+      if (drag.moved) {
+        justDragged = true;
+        try { win.localStorage.setItem('accessease:pos', JSON.stringify(dragPos)); } catch (e) { /* ignore */ }
+        place();
+      }
+      drag = null;
+    }
+
+    // ---------- Dictionary tooltip for selected words ----------
+    var defineEl = null;
+
+    function ensureDefineTip() {
+      if (defineEl) { return defineEl; }
+      defineEl = doc.createElement('div');
+      defineEl.id = 'ae-define';
+      defineEl.setAttribute('role', 'tooltip');
+      defineEl.style.cssText = 'position:absolute;display:none;max-width:320px;background:#fff;color:#1d2330;border:1px solid #d6dce6;border-radius:12px;box-shadow:0 12px 30px rgba(10,20,40,.25);padding:10px 12px;font:14px/1.45 Arial,sans-serif;z-index:2147483587;cursor:pointer';
+      defineEl.addEventListener('click', function () {
+        var word = defineEl.getAttribute('data-word');
+        hideDefine();
+        if (word) { lookupWord(word); }
+      });
+      doc.body.appendChild(defineEl);
+      return defineEl;
+    }
+
+    function hideDefine() {
+      if (defineEl) { defineEl.style.display = 'none'; }
+    }
+
+    function showDefine(word, rect) {
+      var el = ensureDefineTip();
+      el.setAttribute('data-word', word);
+      el.textContent = '';
+      var title = doc.createElement('strong');
+      title.textContent = word;
+      el.appendChild(title);
+      el.appendChild(doc.createElement('br'));
+      var body = doc.createElement('span');
+      body.textContent = L.dictLoading;
+      el.appendChild(body);
+      el.style.left = (rect.left + (win.scrollX || 0)) + 'px';
+      el.style.top = (rect.bottom + (win.scrollY || 0) + 8) + 'px';
+      el.style.display = 'block';
+
+      var code = (doc.documentElement.lang || cfg.language || 'en').slice(0, 2);
+      if (!win.fetch) { body.textContent = L.dictNone + ' "' + word + '".'; return; }
+      win.fetch('https://' + code + '.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(word))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (el.getAttribute('data-word') !== word) { return; }
+          body.textContent = j && j.extract ? String(j.extract).slice(0, 220) : L.dictNone + ' "' + word + '".';
+        })
+        .catch(function () { body.textContent = L.dictNone + ' "' + word + '".'; });
+    }
+
+    function onSelectionEnd(e) {
+      if (!state.dictionary || fromWidget(e)) { return; }
+      var sel = win.getSelection ? win.getSelection() : null;
+      var word = sel ? String(sel).trim() : '';
+      if (!/^[A-Za-zÀ-ɏ'\-]{2,40}$/.test(word) || !sel.rangeCount) { hideDefine(); return; }
+      var range = sel.getRangeAt(0);
+      var rect = null;
+      if (typeof range.getBoundingClientRect === 'function') { rect = range.getBoundingClientRect(); }
+      if (!rect || (!rect.width && !rect.height)) {
+        var anchor = e.target && e.target.getBoundingClientRect ? e.target : doc.body;
+        rect = anchor.getBoundingClientRect();
+      }
+      showDefine(word, rect);
     }
 
     // ---------- Panel rendering ----------
@@ -1176,11 +1277,27 @@
     function onPanelChange(e) {
       var act = e.target && e.target.getAttribute ? e.target.getAttribute('data-act') : null;
       if (act === 'lang') { setLanguage(e.target.value); }
-      if (act === 'position') { state.position = e.target.value; applyAll(); }
+      if (act === 'position') {
+        state.position = e.target.value;
+        dragPos = null;
+        try { win.localStorage.removeItem('accessease:pos'); } catch (err) { /* ignore */ }
+        applyAll();
+      }
     }
 
     // ---------- Mount ----------
-    fab.addEventListener('click', function () { if (panel.hidden) { setOpen(true); } else { setOpen(false); } });
+    fab.addEventListener('pointerdown', onFabPointerDown);
+    fab.addEventListener('pointermove', onFabPointerMove);
+    fab.addEventListener('pointerup', onFabPointerUp);
+    fab.addEventListener('pointercancel', function () { drag = null; });
+    fab.addEventListener('click', function () {
+      if (justDragged) { justDragged = false; return; }
+      if (panel.hidden) { setOpen(true); } else { setOpen(false); }
+    });
+    doc.addEventListener('mouseup', onSelectionEnd, true);
+    doc.addEventListener('mousedown', function (e) {
+      if (defineEl && !defineEl.contains(e.target)) { hideDefine(); }
+    }, true);
     panel.addEventListener('click', onPanelClick);
     panel.addEventListener('input', onPanelInput);
     panel.addEventListener('change', onPanelChange);
