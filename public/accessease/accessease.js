@@ -445,6 +445,8 @@
       '.wrap{position:absolute;left:0;top:0;width:' + SIZE + 'px;height:' + SIZE + 'px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.4;color:#1d2330;text-align:left}',
       '.fab{position:absolute;left:0;top:0;width:' + SIZE + 'px;height:' + SIZE + 'px;margin:0;padding:0;border:3px solid #fff;border-radius:50%;background:' + p + ';color:' + t + ';box-shadow:0 8px 22px rgba(0,0,0,.28);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s ease}',
       '.fab:hover{transform:scale(1.06)}',
+      '.fab{touch-action:none;user-select:none}',
+      '.fab.dragging{transition:none!important;transform:none!important;cursor:grabbing}',
       'button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid ' + hl + ';outline-offset:2px}',
       '.panel{position:absolute;width:min(384px,calc(100vw - 32px));max-height:min(76vh,680px);overflow:auto;background:rgba(247,249,252,.82);-webkit-backdrop-filter:blur(18px) saturate(1.4);backdrop-filter:blur(18px) saturate(1.4);color:#1d2330;border:1px solid rgba(255,255,255,.7);border-radius:16px;box-shadow:0 18px 48px rgba(10,20,40,.3);box-sizing:border-box;padding-bottom:14px}',
       '.panel[hidden]{display:none}',
@@ -626,29 +628,57 @@
     var drag = null;
     var justDragged = false;
 
+    // Keep the button fully on screen while dragging (document coordinates).
+    function clampToViewport(left, top) {
+      var vw = doc.documentElement.clientWidth || win.innerWidth;
+      var vh = doc.documentElement.clientHeight || win.innerHeight;
+      var sx = win.scrollX || 0, sy = win.scrollY || 0;
+      return {
+        left: Math.max(sx, Math.min(left, sx + vw - SIZE)),
+        top: Math.max(sy, Math.min(top, sy + vh - SIZE))
+      };
+    }
+
+    var dragFrame = 0;
+    var dragLatest = null;
+
+    function applyDragFrame() {
+      dragFrame = 0;
+      if (!drag || !dragLatest) { return; }
+      var dx = dragLatest.x - drag.x, dy = dragLatest.y - drag.y;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 6) { return; }
+      drag.moved = true;
+      var spot = clampToViewport(drag.left + dx, drag.top + dy);
+      dragPos = spot;
+      host.style.left = spot.left + 'px';
+      host.style.top = spot.top + 'px';
+    }
+
     function onFabPointerDown(e) {
       if (e.button !== undefined && e.button !== 0) { return; }
-      drag = { x: e.clientX, y: e.clientY, left: parseFloat(host.style.left) || 0, top: parseFloat(host.style.top) || 0, moved: false };
+      drag = { x: e.clientX, y: e.clientY, left: parseFloat(host.style.left) || 0, top: parseFloat(host.style.top) || 0, moved: false, id: e.pointerId };
+      try { fab.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+      fab.classList.add('dragging');
     }
 
     function onFabPointerMove(e) {
       if (!drag) { return; }
-      var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 6) { return; }
-      drag.moved = true;
-      dragPos = { left: drag.left + dx, top: drag.top + dy };
-      host.style.left = dragPos.left + 'px';
-      host.style.top = dragPos.top + 'px';
+      dragLatest = { x: e.clientX, y: e.clientY };
+      if (!dragFrame) { dragFrame = win.requestAnimationFrame ? win.requestAnimationFrame(applyDragFrame) : win.setTimeout(applyDragFrame, 16); }
     }
 
-    function onFabPointerUp() {
+    function onFabPointerUp(e) {
       if (!drag) { return; }
+      try { fab.releasePointerCapture(drag.id); } catch (err) { /* ignore */ }
+      if (dragFrame) { applyDragFrame(); }
       if (drag.moved) {
         justDragged = true;
-        try { win.localStorage.setItem('accessease:pos', JSON.stringify(dragPos)); } catch (e) { /* ignore */ }
+        try { win.localStorage.setItem('accessease:pos', JSON.stringify(dragPos)); } catch (err) { /* ignore */ }
         place();
       }
       drag = null;
+      dragLatest = null;
+      fab.classList.remove('dragging');
     }
 
     // ---------- Dictionary tooltip for selected words ----------
