@@ -2,19 +2,21 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Teams\CreateTeam;
+use App\Concerns\PasswordValidationRules;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Widget;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class UserController extends Controller
 {
+    use PasswordValidationRules;
+
     /**
      * List every user with their widget count.
      */
@@ -41,29 +43,32 @@ class UserController extends Controller
                 'suspended' => User::query()->where('is_suspended', true)->count(),
                 'widgets' => Widget::query()->count(),
             ],
+            'passwordRules' => Password::defaults()->toPasswordRulesString(),
         ]);
     }
 
     /**
-     * Create an account and email the new person a link to choose their password.
+     * Create an account with the password the admin chose. No email is sent.
      */
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, CreateTeam $createTeam): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'password' => $this->passwordRules(),
         ]);
 
         $user = User::query()->create([
             'name' => $validated['name'],
             'email' => $validated['email'],
-            'password' => Hash::make(Str::random(64)),
-            'email_verified_at' => now(),
+            'password' => $validated['password'],
         ]);
 
-        Password::sendResetLink(['email' => $user->email]);
+        $user->forceFill(['email_verified_at' => now()])->save();
 
-        return back()->with('status', "Account created. An invitation was sent to {$user->email}.");
+        $createTeam->handle($user, $user->name."'s Team", isPersonal: true);
+
+        return back()->with('status', "Account created for {$user->email}.");
     }
 
     /**

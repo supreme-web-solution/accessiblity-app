@@ -3,6 +3,7 @@ import { Ban, ChevronLeft, ChevronRight, Pencil, Plus, ShieldCheck, Trash2, User
 import { useState, type FormEvent } from 'react';
 import EmptyState from '@/components/empty-state';
 import PageHeader from '@/components/page-header';
+import PasswordInput from '@/components/password-input';
 import Pill from '@/components/pill';
 import StatCard from '@/components/stat-card';
 import { TONE, type Tone } from '@/components/tone';
@@ -30,12 +31,13 @@ type Props = {
         total: number;
     };
     stats?: { total: number; suspended: number; widgets: number };
+    passwordRules: string;
 };
 
 const AVATAR_TONES: Tone[] = ['violet', 'sky', 'emerald', 'amber', 'rose'];
 const GRADIENT_BUTTON = 'border-0 bg-gradient-to-r from-violet-600 via-primary to-sky-500 text-white shadow-lg shadow-primary/25 hover:opacity-95';
 
-export default function AdminUsers({ users, stats }: Props) {
+export default function AdminUsers({ users, stats, passwordRules }: Props) {
     const { flash } = usePage<{ flash?: { status?: string } }>().props;
     const [creating, setCreating] = useState(false);
     const [editing, setEditing] = useState<UserRow | null>(null);
@@ -71,7 +73,7 @@ export default function AdminUsers({ users, stats }: Props) {
                 <PageHeader
                     eyebrow="Administration"
                     title="Users"
-                    description="Invite people, update their details, suspend or remove accounts."
+                    description="Create accounts, update their details, suspend or remove them."
                     actions={
                         <Button className={GRADIENT_BUTTON} onClick={() => setCreating(true)}>
                             <Plus /> New user
@@ -164,7 +166,7 @@ export default function AdminUsers({ users, stats }: Props) {
                                                     icon={UsersIcon}
                                                     tone="sky"
                                                     title="No accounts yet"
-                                                    description="Invite the first person to get started. They will receive an email to choose a password."
+                                                    description="Create the first account and set its password here. No email is sent."
                                                     action={
                                                         <Button className={GRADIENT_BUTTON} onClick={() => setCreating(true)}>
                                                             <Plus /> New user
@@ -200,14 +202,22 @@ export default function AdminUsers({ users, stats }: Props) {
                 )}
             </div>
 
-            <CreateUserDialog open={creating} onOpenChange={setCreating} />
+            <CreateUserDialog open={creating} onOpenChange={setCreating} passwordRules={passwordRules} />
             {editing && <EditUserDialog user={editing} onClose={() => setEditing(null)} />}
         </>
     );
 }
 
-function CreateUserDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-    const form = useForm({ name: '', email: '' });
+function CreateUserDialog({
+    open,
+    onOpenChange,
+    passwordRules,
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    passwordRules: string;
+}) {
+    const form = useForm({ name: '', email: '', password: '', password_confirmation: '' });
 
     function submit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -224,17 +234,41 @@ function CreateUserDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Invite a new user</DialogTitle>
+                    <DialogTitle>Create a new user</DialogTitle>
                     <DialogDescription>
-                        We create the account and email them a link to choose their own password. Nobody else sees it.
+                        The account is ready to sign in with the password you set. No email is sent.
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={submit} className="grid gap-4">
                     <UserFields form={form} />
+                    <div className="grid gap-2">
+                        <Label htmlFor="user-password">Password</Label>
+                        <PasswordInput
+                            id="user-password"
+                            value={form.data.password}
+                            onChange={(event) => form.setData('password', event.target.value)}
+                            autoComplete="new-password"
+                            passwordrules={passwordRules}
+                            required
+                        />
+                        {form.errors.password && <p className="text-sm text-destructive">{form.errors.password}</p>}
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="user-password-confirmation">Confirm password</Label>
+                        <PasswordInput
+                            id="user-password-confirmation"
+                            value={form.data.password_confirmation}
+                            onChange={(event) => form.setData('password_confirmation', event.target.value)}
+                            autoComplete="new-password"
+                            passwordrules={passwordRules}
+                            required
+                        />
+                        {form.errors.password_confirmation && <p className="text-sm text-destructive">{form.errors.password_confirmation}</p>}
+                    </div>
                     <DialogFooter>
                         <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
                         <Button type="submit" disabled={form.processing} className={GRADIENT_BUTTON}>
-                            Send invitation
+                            Create account
                         </Button>
                     </DialogFooter>
                 </form>
@@ -275,7 +309,15 @@ function EditUserDialog({ user, onClose }: { user: UserRow; onClose: () => void 
     );
 }
 
-function UserFields({ form }: { form: ReturnType<typeof useForm<{ name: string; email: string }>> }) {
+function UserFields({
+    form,
+}: {
+    form: {
+        data: { name: string; email: string };
+        errors: { name?: string; email?: string };
+        setData: (key: 'name' | 'email', value: string) => void;
+    };
+}) {
     return (
         <>
             <div className="grid gap-2">

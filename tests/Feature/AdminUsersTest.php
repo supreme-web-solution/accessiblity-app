@@ -2,7 +2,7 @@
 
 use App\Models\User;
 use App\Models\Widget;
-use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 
 beforeEach(fn () => config(['app.admin_emails' => ['boss@example.com', 'second@example.com']]));
@@ -63,26 +63,56 @@ test('accounts listed in ADMIN_EMAIL are admins, matched without case', function
         ->and(User::factory()->create(['email' => 'someone@example.com'])->is_admin)->toBeFalse();
 });
 
-test('an admin can invite a new user, who gets a password-reset email', function () {
+test('an admin can create a user with a password and no email is sent', function () {
     Notification::fake();
     $admin = User::factory()->create(['email' => 'boss@example.com']);
 
     $this->actingAs($admin)
-        ->post(route('admin.users.store'), ['name' => 'New Person', 'email' => 'new@example.com'])
+        ->post(route('admin.users.store'), [
+            'name' => 'New Person',
+            'email' => 'new@example.com',
+            'password' => 'password',
+            'password_confirmation' => 'password',
+        ])
         ->assertRedirect()
         ->assertSessionHas('status');
 
     $created = User::query()->where('email', 'new@example.com')->sole();
-    expect($created->name)->toBe('New Person');
-    Notification::assertSentTo($created, ResetPassword::class);
+
+    expect($created->name)->toBe('New Person')
+        ->and($created->email_verified_at)->not->toBeNull()
+        ->and(Hash::check('password', $created->password))->toBeTrue()
+        ->and($created->personalTeam())->not->toBeNull();
+
+    Notification::assertNothingSent();
 });
 
-test('invitations need a unique email', function () {
+test('creating a user requires a confirmed password', function () {
+    $admin = User::factory()->create(['email' => 'boss@example.com']);
+
+    $this->actingAs($admin)
+        ->post(route('admin.users.store'), [
+            'name' => 'New Person',
+            'email' => 'new@example.com',
+            'password' => 'password',
+            'password_confirmation' => 'different',
+        ])
+        ->assertSessionHasErrors('password');
+
+    expect(User::query()->where('email', 'new@example.com')->exists())->toBeFalse();
+});
+
+test('new accounts need a unique email', function () {
     $admin = User::factory()->create(['email' => 'boss@example.com']);
     User::factory()->create(['email' => 'taken@example.com']);
 
     $this->actingAs($admin)
-        ->post(route('admin.users.store'), ['name' => 'Copy', 'email' => 'taken@example.com'])
+        ->post(route('admin.users.store'), [
+            'name' => 'Copy',
+            'email' => 'taken@example.com',
+            'password' => 'password',
+            'password_confirmation' => 'password',
+        ])
         ->assertSessionHasErrors('email');
 });
 
