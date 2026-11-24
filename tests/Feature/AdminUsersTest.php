@@ -138,6 +138,56 @@ test('an admin can edit a user and keep their own email unchanged', function () 
     expect($member->fresh()->name)->toBe('New Name');
 });
 
+test('an admin can change a user password without sending email', function () {
+    Notification::fake();
+    $admin = User::factory()->create(['email' => 'boss@example.com']);
+    $member = User::factory()->create(['password' => 'old-password']);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.users.update', $member), [
+            'name' => $member->name,
+            'email' => $member->email,
+            'password' => 'new-password',
+            'password_confirmation' => 'new-password',
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('status');
+
+    expect(Hash::check('new-password', $member->fresh()->password))->toBeTrue();
+    Notification::assertNothingSent();
+});
+
+test('editing a user without a password leaves the current password unchanged', function () {
+    $admin = User::factory()->create(['email' => 'boss@example.com']);
+    $member = User::factory()->create(['password' => 'keep-me']);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.users.update', $member), [
+            'name' => 'Renamed',
+            'email' => $member->email,
+            'password' => '',
+            'password_confirmation' => '',
+        ])
+        ->assertRedirect();
+
+    expect($member->fresh()->name)->toBe('Renamed')
+        ->and(Hash::check('keep-me', $member->fresh()->password))->toBeTrue();
+});
+
+test('changing a password requires confirmation', function () {
+    $admin = User::factory()->create(['email' => 'boss@example.com']);
+    $member = User::factory()->create();
+
+    $this->actingAs($admin)
+        ->patch(route('admin.users.update', $member), [
+            'name' => $member->name,
+            'email' => $member->email,
+            'password' => 'new-password',
+            'password_confirmation' => 'different',
+        ])
+        ->assertSessionHasErrors('password');
+});
+
 test('an admin can delete a user and their widgets', function () {
     $admin = User::factory()->create(['email' => 'boss@example.com']);
     $member = User::factory()->create();

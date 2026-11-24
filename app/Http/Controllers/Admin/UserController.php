@@ -72,16 +72,26 @@ class UserController extends Controller
     }
 
     /**
-     * Change a user's name or email address.
+     * Change a user's name, email, or password. Password is optional; leave blank to keep it.
      */
     public function update(Request $request, User $user): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email,'.$user->id],
+            'password' => ['nullable', 'string', Password::default(), 'confirmed'],
         ]);
 
-        $user->update($validated);
+        $user->fill([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+        ]);
+
+        if (filled($validated['password'] ?? null)) {
+            $user->password = $validated['password'];
+        }
+
+        $user->save();
 
         return back()->with('status', 'User updated.');
     }

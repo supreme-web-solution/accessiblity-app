@@ -203,7 +203,7 @@ export default function AdminUsers({ users, stats, passwordRules }: Props) {
             </div>
 
             <CreateUserDialog open={creating} onOpenChange={setCreating} passwordRules={passwordRules} />
-            {editing && <EditUserDialog user={editing} onClose={() => setEditing(null)} />}
+            {editing && <EditUserDialog user={editing} onClose={() => setEditing(null)} passwordRules={passwordRules} />}
         </>
     );
 }
@@ -277,8 +277,16 @@ function CreateUserDialog({
     );
 }
 
-function EditUserDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
-    const form = useForm({ name: user.name, email: user.email });
+function EditUserDialog({
+    user,
+    onClose,
+    passwordRules,
+}: {
+    user: UserRow;
+    onClose: () => void;
+    passwordRules: string;
+}) {
+    const form = useForm({ name: user.name, email: user.email, password: '', password_confirmation: '' });
 
     function submit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -293,10 +301,34 @@ function EditUserDialog({ user, onClose }: { user: UserRow; onClose: () => void 
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Edit account</DialogTitle>
-                    <DialogDescription>Change how this person's name and email appear. Their widgets stay as they are.</DialogDescription>
+                    <DialogDescription>
+                        Update their name, email, or password. Leave password blank to keep the current one. No email is sent.
+                    </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={submit} className="grid gap-4">
                     <UserFields form={form} />
+                    <div className="grid gap-2">
+                        <Label htmlFor="edit-user-password">New password</Label>
+                        <PasswordInput
+                            id="edit-user-password"
+                            value={form.data.password}
+                            onChange={(event) => form.setData('password', event.target.value)}
+                            autoComplete="new-password"
+                            passwordrules={passwordRules}
+                        />
+                        {form.errors.password && <p className="text-sm text-destructive">{form.errors.password}</p>}
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="edit-user-password-confirmation">Confirm new password</Label>
+                        <PasswordInput
+                            id="edit-user-password-confirmation"
+                            value={form.data.password_confirmation}
+                            onChange={(event) => form.setData('password_confirmation', event.target.value)}
+                            autoComplete="new-password"
+                            passwordrules={passwordRules}
+                        />
+                        {form.errors.password_confirmation && <p className="text-sm text-destructive">{form.errors.password_confirmation}</p>}
+                    </div>
                     <DialogFooter>
                         <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
                         <Button type="submit" disabled={form.processing} className={GRADIENT_BUTTON}>
